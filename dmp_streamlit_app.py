@@ -1,8 +1,8 @@
-# dmp_streamlit_app.py
 import re
+from pathlib import Path
+from datetime import datetime
 import streamlit as st
 from fpdf import FPDF
-from datetime import datetime
 
 st.set_page_config(page_title="DMP Assignment", layout="centered")
 st.title("Data Management Plan (DMP)")
@@ -34,24 +34,28 @@ def text_section(label: str, max_words: int):
         st.warning("Word limit exceeded. Please shorten your response.")
     return text, ok
 
-# Break very long unspaced tokens (e.g. URLs) so fpdf2 can wrap them
 def break_long_tokens(s: str, maxlen: int = 80) -> str:
+    """Insert spaces in very-long tokens to allow wrapping in fpdf2."""
     def _breaker(match):
         tok = match.group(0)
-        # insert spaces every maxlen chars
         return " ".join(tok[i:i+maxlen] for i in range(0, len(tok), maxlen))
-    # \S{N,} = sequences with no whitespace
     return re.sub(rf"\S{{{maxlen+1},}}", _breaker, s or "")
 
+# Cache the font path
+FONT_PATH = str((Path(__file__).resolve().parent / "fonts" / "DejaVuSans.ttf"))
+
 def build_pdf_bytes(sections: dict) -> bytes:
-    """
-    Build a simple PDF from the provided sections using fpdf2.
-    Uses explicit content width and soft-wraps very long tokens to avoid
-    'Not enough horizontal space to render a single character'.
-    """
     pdf = FPDF()
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
+
+    # Register and use a Unicode font
+    # add_font is safe to call multiple times in recent fpdf2, but guard anyway:
+    try:
+        pdf.add_font("DejaVu", "", FONT_PATH, uni=True)
+    except Exception:
+        # If already registered or on any benign error, continue
+        pass
 
     # Page geometry
     left = pdf.l_margin
@@ -60,33 +64,35 @@ def build_pdf_bytes(sections: dict) -> bytes:
     content_w = page_w - left - right
 
     # Header
-    pdf.set_font("helvetica", size=12)
+    pdf.set_font("DejaVu", size=12)
     pdf.set_xy(left, pdf.get_y())
     pdf.cell(content_w, 10, "Data Management Plan Submission", ln=True, align="C")
     pdf.ln(2)
 
-    pdf.set_font("helvetica", size=10)
+    pdf.set_font("DejaVu", size=10)
     pdf.set_xy(left, pdf.get_y())
     pdf.cell(content_w, 6, f"Generated: {datetime.now():%Y-%m-%d %H:%M}", ln=True)
     pdf.ln(2)
 
     # Sections
     for title, content in sections.items():
-        # Title
-        pdf.set_font("helvetica", style="B", size=11)
+        pdf.set_font("DejaVu", size=11)
         pdf.set_xy(left, pdf.get_y())
         pdf.multi_cell(content_w, 6, title)
 
-        # Body
-        pdf.set_font("helvetica", size=10)
+        pdf.set_font("DejaVu", size=10)
         body = (content or "").strip() or "[No response provided]"
-        body = break_long_tokens(body, maxlen=80)  # prevent unbreakable tokens
+        body = break_long_tokens(body, maxlen=80)
         pdf.set_xy(left, pdf.get_y())
         pdf.multi_cell(content_w, 6, body)
         pdf.ln(1)
 
-    # Return PDF as bytes (Latin-1). If you need full Unicode, embed a TTF.
-    return pdf.output(dest="S").encode("latin-1", "replace")
+    # In fpdf2, output(dest="S") returns bytes; don't encode again.
+    pdf_bytes = pdf.output(dest="S")
+    # If running on older fpdf (string), normalize to bytes:
+    if isinstance(pdf_bytes, str):
+        pdf_bytes = pdf_bytes.encode("latin-1", "replace")
+    return pdf_bytes
 
 # ---------- Form ----------
 with st.form("dmp_form", clear_on_submit=False):
