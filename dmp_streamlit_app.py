@@ -1,8 +1,7 @@
+# dmp_streamlit_app.py
 import streamlit as st
-from io import BytesIO
-from datetime import datetime
 from fpdf import FPDF
-
+from datetime import datetime
 
 st.set_page_config(page_title="DMP Assignment", layout="centered")
 st.title("Data Management Plan (DMP)")
@@ -35,39 +34,33 @@ def text_section(label: str, max_words: int):
     return text, ok
 
 def build_pdf_bytes(sections: dict) -> bytes:
-    buf = BytesIO()
-    doc = SimpleDocTemplate(
-        buf,
-        pagesize=A4,
-        leftMargin=18 * mm,
-        rightMargin=18 * mm,
-        topMargin=18 * mm,
-        bottomMargin=18 * mm,
-    )
-    styles = getSampleStyleSheet()
-    heading = styles["Heading1"]
-    subhead = styles["Heading3"]
-    body = ParagraphStyle(
-        "Body",
-        parent=styles["Normal"],
-        leading=14,
-        spaceAfter=6,
-    )
+    """
+    Build a simple PDF from the provided sections using fpdf2.
+    Note: core fonts are Latin-1. If you need full Unicode, bundle a TTF and use add_font.
+    """
+    pdf = FPDF()
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.add_page()
 
-    story = []
-    story.append(Paragraph("Data Management Plan Submission", heading))
-    story.append(Spacer(1, 6))
-    story.append(Paragraph(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}", styles["Normal"]))
-    story.append(Spacer(1, 12))
+    # Use core font; switch to embedded TTF if you later add one to the repo.
+    pdf.set_font("helvetica", size=12)
+    pdf.cell(0, 10, "Data Management Plan Submission", ln=True, align="C")
+    pdf.ln(4)
+
+    pdf.set_font("helvetica", size=10)
+    pdf.cell(0, 8, f"Generated: {datetime.now():%Y-%m-%d %H:%M}", ln=True)
+    pdf.ln(2)
 
     for title, content in sections.items():
-        story.append(Paragraph(title, subhead))
-        txt = (content or "").strip() or "[No response provided]"
-        story.append(Paragraph(txt, body))
-        story.append(Spacer(1, 10))
+        pdf.set_font("helvetica", style="B", size=11)
+        pdf.multi_cell(0, 6, title)
+        pdf.set_font("helvetica", size=10)
+        body = (content or "").strip() or "[No response provided]"
+        pdf.multi_cell(0, 6, body)
+        pdf.ln(2)
 
-    doc.build(story)
-    return buf.getvalue()
+    # Return PDF as bytes
+    return pdf.output(dest="S").encode("latin-1", "replace")
 
 # ---------- Form ----------
 with st.form("dmp_form", clear_on_submit=False):
@@ -113,15 +106,18 @@ with st.form("dmp_form", clear_on_submit=False):
 
     within_limits = all(oks)
     submitted = st.form_submit_button("Prepare PDF")
-
-if submitted:
-    if not within_limits:
+    if submitted and not within_limits:
         st.error("One or more sections exceed the word limit. Please revise your answers before exporting.")
-    else:
-        pdf_bytes = build_pdf_bytes(sections)
-        st.download_button(
-            label="Download PDF",
-            data=pdf_bytes,
-            file_name="dmp_submission.pdf",
-            mime="application/pdf"
-        )
+
+# ---------- Download ----------
+# Show the download button only after a valid form submission
+if 'submitted' in locals() and submitted and within_limits:
+    pdf_bytes = build_pdf_bytes(sections)
+    st.download_button(
+        label="Download PDF",
+        data=pdf_bytes,
+        file_name="dmp_submission.pdf",
+        mime="application/pdf"
+    )
+else:
+    st.info("Fill out the form and click **Prepare PDF**. When all word limits are satisfied, the download button will appear.")
