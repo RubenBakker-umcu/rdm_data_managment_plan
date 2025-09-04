@@ -1,4 +1,5 @@
 # dmp_streamlit_app.py
+import re
 import streamlit as st
 from fpdf import FPDF
 from datetime import datetime
@@ -33,33 +34,58 @@ def text_section(label: str, max_words: int):
         st.warning("Word limit exceeded. Please shorten your response.")
     return text, ok
 
+# Break very long unspaced tokens (e.g. URLs) so fpdf2 can wrap them
+def break_long_tokens(s: str, maxlen: int = 80) -> str:
+    def _breaker(match):
+        tok = match.group(0)
+        # insert spaces every maxlen chars
+        return " ".join(tok[i:i+maxlen] for i in range(0, len(tok), maxlen))
+    # \S{N,} = sequences with no whitespace
+    return re.sub(rf"\S{{{maxlen+1},}}", _breaker, s or "")
+
 def build_pdf_bytes(sections: dict) -> bytes:
     """
     Build a simple PDF from the provided sections using fpdf2.
-    Note: core fonts are Latin-1. If you need full Unicode, bundle a TTF and use add_font.
+    Uses explicit content width and soft-wraps very long tokens to avoid
+    'Not enough horizontal space to render a single character'.
     """
     pdf = FPDF()
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
 
-    # Use core font; switch to embedded TTF if you later add one to the repo.
-    pdf.set_font("helvetica", size=12)
-    pdf.cell(0, 10, "Data Management Plan Submission", ln=True, align="C")
-    pdf.ln(4)
+    # Page geometry
+    left = pdf.l_margin
+    right = pdf.r_margin
+    page_w = pdf.w
+    content_w = page_w - left - right
 
-    pdf.set_font("helvetica", size=10)
-    pdf.cell(0, 8, f"Generated: {datetime.now():%Y-%m-%d %H:%M}", ln=True)
+    # Header
+    pdf.set_font("helvetica", size=12)
+    pdf.set_xy(left, pdf.get_y())
+    pdf.cell(content_w, 10, "Data Management Plan Submission", ln=True, align="C")
     pdf.ln(2)
 
+    pdf.set_font("helvetica", size=10)
+    pdf.set_xy(left, pdf.get_y())
+    pdf.cell(content_w, 6, f"Generated: {datetime.now():%Y-%m-%d %H:%M}", ln=True)
+    pdf.ln(2)
+
+    # Sections
     for title, content in sections.items():
+        # Title
         pdf.set_font("helvetica", style="B", size=11)
-        pdf.multi_cell(0, 6, title)
+        pdf.set_xy(left, pdf.get_y())
+        pdf.multi_cell(content_w, 6, title)
+
+        # Body
         pdf.set_font("helvetica", size=10)
         body = (content or "").strip() or "[No response provided]"
-        pdf.multi_cell(0, 6, body)
-        pdf.ln(2)
+        body = break_long_tokens(body, maxlen=80)  # prevent unbreakable tokens
+        pdf.set_xy(left, pdf.get_y())
+        pdf.multi_cell(content_w, 6, body)
+        pdf.ln(1)
 
-    # Return PDF as bytes
+    # Return PDF as bytes (Latin-1). If you need full Unicode, embed a TTF.
     return pdf.output(dest="S").encode("latin-1", "replace")
 
 # ---------- Form ----------
@@ -110,7 +136,6 @@ with st.form("dmp_form", clear_on_submit=False):
         st.error("One or more sections exceed the word limit. Please revise your answers before exporting.")
 
 # ---------- Download ----------
-# Show the download button only after a valid form submission
 if 'submitted' in locals() and submitted and within_limits:
     pdf_bytes = build_pdf_bytes(sections)
     st.download_button(
