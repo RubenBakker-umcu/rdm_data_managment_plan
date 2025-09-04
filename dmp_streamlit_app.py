@@ -42,7 +42,6 @@ def break_long_tokens(s: str, maxlen: int = 80) -> str:
     return re.sub(rf"\S{{{maxlen+1},}}", _breaker, s or "")
 
 def build_pdf_bytes(sections: dict) -> bytes:
-    
     pdf = FPDF()
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
@@ -74,11 +73,14 @@ def build_pdf_bytes(sections: dict) -> bytes:
         pdf.multi_cell(content_w, 6, body)
         pdf.ln(1)
 
-    pdf_bytes = pdf.output(dest="S").encode("latin-1", "replace") 
-    
-    if isinstance(pdf.output(dest="S"), str) else pdf.output(dest="S")
+    pdf_output = pdf.output(dest="S")
+    try:
+        pdf_bytes = pdf_output.encode("latin-1", "replace")
+    except AttributeError:
+        # pdf_output is already bytes
+        pdf_bytes = pdf_output
     return bytes(pdf_bytes)
-
+    
 # ---------- Form ----------
 with st.form("dmp_form", clear_on_submit=False):
     sections = {}
