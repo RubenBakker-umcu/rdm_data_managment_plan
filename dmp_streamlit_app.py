@@ -1,7 +1,14 @@
+```python
+# dmp_streamlit_app.py
 import streamlit as st
-from fpdf import FPDF
 from io import BytesIO
 from datetime import datetime
+
+# PDF generation with ReportLab (no extra pip deps needed on Streamlit Cloud)
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.units import mm
 
 st.set_page_config(page_title="DMP Assignment", layout="centered")
 st.title("Data Management Plan (DMP)")
@@ -33,28 +40,40 @@ def text_section(label: str, max_words: int):
         st.warning("Word limit exceeded. Please shorten your response.")
     return text, ok
 
-def build_pdf_bytes(payload: dict) -> bytes:
-    pdf = FPDF()
-    pdf.set_auto_page_break(auto=True, margin=15)
-    pdf.add_page()
-    pdf.set_font("helvetica", size=12)
+def build_pdf_bytes(sections: dict) -> bytes:
+    buf = BytesIO()
+    doc = SimpleDocTemplate(
+        buf,
+        pagesize=A4,
+        leftMargin=18 * mm,
+        rightMargin=18 * mm,
+        topMargin=18 * mm,
+        bottomMargin=18 * mm,
+    )
+    styles = getSampleStyleSheet()
+    heading = styles["Heading1"]
+    subhead = styles["Heading3"]
+    body = ParagraphStyle(
+        "Body",
+        parent=styles["Normal"],
+        leading=14,
+        spaceAfter=6,
+    )
 
-    pdf.cell(0, 10, "Data Management Plan Submission", ln=True, align="C")
-    pdf.ln(4)
+    story = []
+    story.append(Paragraph("Data Management Plan Submission", heading))
+    story.append(Spacer(1, 6))
+    story.append(Paragraph(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}", styles["Normal"]))
+    story.append(Spacer(1, 12))
 
-    pdf.set_font("helvetica", size=10)
-    pdf.cell(0, 6, f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}", ln=True)
-    pdf.ln(4)
+    for title, content in sections.items():
+        story.append(Paragraph(title, subhead))
+        txt = (content or "").strip() or "[No response provided]"
+        story.append(Paragraph(txt, body))
+        story.append(Spacer(1, 10))
 
-    for title, content in payload.items():
-        pdf.set_font("helvetica", style="B", size=11)
-        pdf.multi_cell(0, 6, title)
-        pdf.set_font("helvetica", size=10)
-        body = content.strip() if content else "[No response provided]"
-        pdf.multi_cell(0, 6, body)
-        pdf.ln(2)
-
-    return pdf.output(dest="S").encode("latin-1", "replace")
+    doc.build(story)
+    return buf.getvalue()
 
 # ---------- Form ----------
 with st.form("dmp_form", clear_on_submit=False):
@@ -100,24 +119,16 @@ with st.form("dmp_form", clear_on_submit=False):
 
     within_limits = all(oks)
     submitted = st.form_submit_button("Prepare PDF")
-    if submitted and not within_limits:
+
+if submitted:
+    if not within_limits:
         st.error("One or more sections exceed the word limit. Please revise your answers before exporting.")
-
-# ---------- Download ----------
-if 'sections' not in st.session_state:
-    st.session_state.sections = {}
-
-if 'submitted' in locals() and submitted:
-    st.session_state.sections = sections
-
-ready = bool(st.session_state.sections) and within_limits
-if ready:
-    pdf_bytes = build_pdf_bytes(st.session_state.sections)
-    st.download_button(
-        label="Download PDF",
-        data=pdf_bytes,
-        file_name="dmp_submission.pdf",
-        mime="application/pdf"
-    )
-else:
-    st.info("Fill out the form and click **Prepare PDF**. When all word limits are satisfied, the download button will appear.")
+    else:
+        pdf_bytes = build_pdf_bytes(sections)
+        st.download_button(
+            label="Download PDF",
+            data=pdf_bytes,
+            file_name="dmp_submission.pdf",
+            mime="application/pdf"
+        )
+```
