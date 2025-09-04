@@ -1,12 +1,8 @@
 import streamlit as st
 from io import BytesIO
 from datetime import datetime
+from fpdf import FPDF
 
-# PDF generation with ReportLab (no extra pip deps needed on Streamlit Cloud)
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.units import mm
 
 st.set_page_config(page_title="DMP Assignment", layout="centered")
 st.title("Data Management Plan (DMP)")
