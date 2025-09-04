@@ -65,13 +65,16 @@ def build_pdf_bytes(sections: dict) -> bytes:
     # Sections
     for title, content in sections.items():
         pdf.set_font("DejaVu", size=11)
+        pdf.set_x(left)                      # reset alignment
         pdf.multi_cell(content_w, 6, title)
 
         pdf.set_font("DejaVu", size=10)
         body = (content or "").strip() or "[No response provided]"
         body = break_long_tokens(body, maxlen=80)
+        pdf.set_x(left)                      # reset alignment again
         pdf.multi_cell(content_w, 6, body)
         pdf.ln(1)
+
 
     pdf_output = pdf.output(dest="S")
     try:
